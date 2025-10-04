@@ -13,13 +13,8 @@ function onEdit(e) {
     sheet.hideColumn(sheet.getRange(1, idCol));
   }
 
-  // Automatically hide row 2 if it’s not hidden
-  if (!sheet.isRowHiddenByUser(instructionRow)) {
-    sheet.hideRows(instructionRow);
-  }
-
-  // Don't trigger if editing ID column or instruction row
-  if (editedRow === instructionRow || editedCol === idCol) return;
+  // Don't trigger if editing ID column
+  if (editedCol === idCol) return;
 
   // --- Check if the edited column has a sorting instruction ---
   const instructions = sheet.getRange(instructionRow, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -27,7 +22,15 @@ function onEdit(e) {
 
   if (!hasSortInstruction) return; // Do nothing if the column is not sorted
 
-  autoSortColumns(sheet, editedRow, editedCol, idCol, instructionRow);
+  // --- Hide row 2 only if the edit was not in row 2 ---
+  if (editedRow !== instructionRow && !sheet.isRowHiddenByUser(instructionRow)) {
+    sheet.hideRows(instructionRow);
+  }
+
+  // --- Only run sorting if edit is not in row 2 ---
+  if (editedRow !== instructionRow) {
+    autoSortColumns(sheet, editedRow, editedCol, idCol, instructionRow);
+  }
 }
 
 function autoSortColumns(sheet, activeRow, activeCol, idCol, instructionRow) {
