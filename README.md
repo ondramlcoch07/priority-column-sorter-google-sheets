@@ -10,6 +10,7 @@ Automatically sorts Google Sheets columns based on **priority instructions in ro
 - Automatically triggers on edits (except row 2).  
 - Active cell moves with its row after sorting.  
 - Fully configurable via row 2 instructions, no script changes needed.
+- Active cell movement toggle in menubar (only in [beta](https://github.com/ondramlcoch07/priority-column-sorter-google-sheets/blob/main/code%201.0.1).)
 
 ---
 
