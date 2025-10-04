@@ -1,32 +1,63 @@
 function onEdit(e) {
-  if (!e) return; // ignore manual runs
+  if (!e) return;
 
   const sheet = e.source.getActiveSheet();
   const editedRow = e.range.getRow();
+  const editedCol = e.range.getColumn();
 
-  // Don't trigger if editing row 2 (instructions)
-  if (editedRow === 2) return;
+  const idCol = 1; // Hidden ID column in column A
+  const instructionRow = 2; // Row with sorting instructions
 
-  autoSortColumns(sheet, editedRow, e.range.getColumn());
+  // Automatically hide the ID column if it’s not hidden
+  if (!sheet.isColumnHiddenByUser(idCol)) {
+    sheet.hideColumn(sheet.getRange(1, idCol));
+  }
+
+  // Automatically hide row 2 if it’s not hidden
+  if (!sheet.isRowHiddenByUser(instructionRow)) {
+    sheet.hideRows(instructionRow);
+  }
+
+  // Don't trigger if editing ID column or instruction row
+  if (editedRow === instructionRow || editedCol === idCol) return;
+
+  // --- Check if the edited column has a sorting instruction ---
+  const instructions = sheet.getRange(instructionRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hasSortInstruction = instructions[editedCol - 1] && instructions[editedCol - 1].toString().match(/\d+\.\s*(A-Z|Z-A)/i);
+
+  if (!hasSortInstruction) return; // Do nothing if the column is not sorted
+
+  autoSortColumns(sheet, editedRow, editedCol, idCol, instructionRow);
 }
 
-function autoSortColumns(sheet, activeRow, activeCol) {
+function autoSortColumns(sheet, activeRow, activeCol, idCol, instructionRow) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  if (lastRow <= 2) return; // nothing to sort
+  if (lastRow <= instructionRow) return; // nothing to sort
 
-  // Save active row values to identify it after sort
-  const rowValues = sheet.getRange(activeRow, 1, 1, lastCol).getValues()[0];
+  // --- Ensure hidden ID column exists ---
+  const idRange = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1);
+  const ids = idRange.getValues();
+  let changed = false;
+  for (let i = 0; i < ids.length; i++) {
+    if (!ids[i][0]) {
+      ids[i][0] = Utilities.getUuid();
+      changed = true;
+    }
+  }
+  if (changed) idRange.setValues(ids);
 
-  // --- Read sort instructions from row 2 ---
-  const instructions = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
+  const activeId = sheet.getRange(activeRow, idCol).getValue();
+
+  // --- Build sorting instructions ---
+  const instructions = sheet.getRange(instructionRow, 1, 1, lastCol).getValues()[0];
   const sortInstructions = [];
   instructions.forEach((instr, i) => {
-    if (instr) {
+    if (instr && i + 1 !== idCol) {
       const match = instr.toString().match(/(\d+)\.\s*(A-Z|Z-A)/i);
       if (match) {
         sortInstructions.push({
-          colIndex: i + 1,
+          column: i + 1,
           priority: parseInt(match[1]),
           ascending: match[2].toUpperCase() === "A-Z"
         });
@@ -35,38 +66,29 @@ function autoSortColumns(sheet, activeRow, activeCol) {
   });
   if (sortInstructions.length === 0) return;
 
+  // Sort by priority ascending
   sortInstructions.sort((a, b) => a.priority - b.priority);
+
   const sortSpecs = sortInstructions.map(instr => ({
-    column: instr.colIndex,
+    column: instr.column,
     ascending: instr.ascending
   }));
 
-  // --- Sort data (row 3 and below) ---
-  const range = sheet.getRange(3, 1, lastRow - 2, lastCol);
+  // --- Sort data (row 3 down, all columns) ---
+  const range = sheet.getRange(instructionRow + 1, 1, lastRow - instructionRow, lastCol);
   range.sort(sortSpecs);
 
-  // --- Find the new row index of the active row ---
-  const allData = range.getValues();
+  // --- Move active cell to the row with the same ID ---
+  const allIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues();
   let newRowIndex = -1;
-  for (let i = 0; i < allData.length; i++) {
-    // Compare only non-empty cells, ignore formulas/objects
-    let match = true;
-    for (let j = 0; j < lastCol; j++) {
-      const val1 = allData[i][j];
-      const val2 = rowValues[j];
-      if (val1 !== val2) {
-        match = false;
-        break;
-      }
-    }
-    if (match) {
-      newRowIndex = i + 3; // +3 because data starts at row 3
+  for (let i = 0; i < allIds.length; i++) {
+    if (allIds[i][0] === activeId) {
+      newRowIndex = i + instructionRow + 1; // adjust for hidden row offset
       break;
     }
   }
 
   if (newRowIndex >= 0) {
-    // Move active cell safely to the same column in the new row
     sheet.setActiveSelection(sheet.getRange(newRowIndex, activeCol));
   }
 }
