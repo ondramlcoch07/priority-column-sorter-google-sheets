@@ -1,0 +1,72 @@
+function onEdit(e) {
+  if (!e) return; // ignore manual runs
+
+  const sheet = e.source.getActiveSheet();
+  const editedRow = e.range.getRow();
+
+  // Don't trigger if editing row 2 (instructions)
+  if (editedRow === 2) return;
+
+  autoSortColumns(sheet, editedRow, e.range.getColumn());
+}
+
+function autoSortColumns(sheet, activeRow, activeCol) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow <= 2) return; // nothing to sort
+
+  // Save active row values to identify it after sort
+  const rowValues = sheet.getRange(activeRow, 1, 1, lastCol).getValues()[0];
+
+  // --- Read sort instructions from row 2 ---
+  const instructions = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
+  const sortInstructions = [];
+  instructions.forEach((instr, i) => {
+    if (instr) {
+      const match = instr.toString().match(/(\d+)\.\s*(A-Z|Z-A)/i);
+      if (match) {
+        sortInstructions.push({
+          colIndex: i + 1,
+          priority: parseInt(match[1]),
+          ascending: match[2].toUpperCase() === "A-Z"
+        });
+      }
+    }
+  });
+  if (sortInstructions.length === 0) return;
+
+  sortInstructions.sort((a, b) => a.priority - b.priority);
+  const sortSpecs = sortInstructions.map(instr => ({
+    column: instr.colIndex,
+    ascending: instr.ascending
+  }));
+
+  // --- Sort data (row 3 and below) ---
+  const range = sheet.getRange(3, 1, lastRow - 2, lastCol);
+  range.sort(sortSpecs);
+
+  // --- Find the new row index of the active row ---
+  const allData = range.getValues();
+  let newRowIndex = -1;
+  for (let i = 0; i < allData.length; i++) {
+    // Compare only non-empty cells, ignore formulas/objects
+    let match = true;
+    for (let j = 0; j < lastCol; j++) {
+      const val1 = allData[i][j];
+      const val2 = rowValues[j];
+      if (val1 !== val2) {
+        match = false;
+        break;
+      }
+    }
+    if (match) {
+      newRowIndex = i + 3; // +3 because data starts at row 3
+      break;
+    }
+  }
+
+  if (newRowIndex >= 0) {
+    // Move active cell safely to the same column in the new row
+    sheet.setActiveSelection(sheet.getRange(newRowIndex, activeCol));
+  }
+}
