@@ -52,6 +52,9 @@ function autoSortColumns(sheet, activeRow, activeCol, idCol, instructionRow) {
 
   const activeId = sheet.getRange(activeRow, idCol).getValue();
 
+  // --- Save original row positions ---
+  const originalIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues().map(r => r[0]);
+
   // --- Build sorting instructions ---
   const instructions = sheet.getRange(instructionRow, 1, 1, lastCol).getValues()[0];
   const sortInstructions = [];
@@ -81,17 +84,13 @@ function autoSortColumns(sheet, activeRow, activeCol, idCol, instructionRow) {
   const range = sheet.getRange(instructionRow + 1, 1, lastRow - instructionRow, lastCol);
   range.sort(sortSpecs);
 
-  // --- Move active cell to the row with the same ID ---
-  const allIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues();
-  let newRowIndex = -1;
-  for (let i = 0; i < allIds.length; i++) {
-    if (allIds[i][0] === activeId) {
-      newRowIndex = i + instructionRow + 1; // adjust for hidden row offset
-      break;
-    }
-  }
+  // --- Only move active cell if row actually changed ---
+  const allIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues().map(r => r[0]);
+  const oldIndex = originalIds.indexOf(activeId);
+  const newIndex = allIds.indexOf(activeId);
 
-  if (newRowIndex >= 0) {
+  if (oldIndex !== newIndex && newIndex >= 0) {
+    const newRowIndex = instructionRow + 1 + newIndex;
     sheet.setActiveSelection(sheet.getRange(newRowIndex, activeCol));
   }
 }
