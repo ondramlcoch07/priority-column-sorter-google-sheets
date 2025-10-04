@@ -16,7 +16,7 @@ Automatically sorts Google Sheets columns based on **priority instructions in ro
 ## Installation
 1. Open your Google Sheet.  
 2. Go to **Extensions → Apps Script**.  
-3. Delete any existing code and paste the [script]([https://openai.com](https://github.com/ondramlcoch07/priority-column-sorter-google-sheets/blob/main/code)).
+3. Delete any existing code and paste the [script](https://github.com/ondramlcoch07/priority-column-sorter-google-sheets/blob/main/code).
 5. Save the project.  
 
 ---
