@@ -1,0 +1,128 @@
+const MOVE_CELL_PROP = 'MOVE_ACTIVE_CELL';
+
+function onOpen() {
+  updateMenu();
+}
+
+// Update the menu dynamically to show ON/OFF
+function updateMenu() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Sorting Options')
+    .addItem(getMenuLabel(), 'toggleMoveActiveCell')
+    .addToUi();
+}
+
+// Returns menu label based on current state
+function getMenuLabel() {
+  const moveCell = PropertiesService.getDocumentProperties().getProperty(MOVE_CELL_PROP) === 'true';
+  return `Move Active Cell: ${moveCell ? 'ON' : 'OFF'}`;
+}
+
+// Toggle the move active cell option
+function toggleMoveActiveCell() {
+  const userProps = PropertiesService.getDocumentProperties();
+  const current = userProps.getProperty(MOVE_CELL_PROP) === 'true';
+  userProps.setProperty(MOVE_CELL_PROP, current ? 'false' : 'true');
+  updateMenu(); // Refresh menu to show updated state
+}
+
+// ------------------ Sorting Script ------------------
+
+function onEdit(e) {
+  if (!e) return;
+
+  const sheet = e.source.getActiveSheet();
+  const editedRow = e.range.getRow();
+  const editedCol = e.range.getColumn();
+
+  const idCol = 1; // Hidden ID column in column A
+  const instructionRow = 2; // Row with sorting instructions
+
+  // Hide ID column if not hidden
+  if (!sheet.isColumnHiddenByUser(idCol)) {
+    sheet.hideColumn(sheet.getRange(1, idCol));
+  }
+
+  // Don't trigger if editing ID column
+  if (editedCol === idCol) return;
+
+  // Check if edited column has a sorting instruction
+  const instructions = sheet.getRange(instructionRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const hasSortInstruction = instructions[editedCol - 1] && instructions[editedCol - 1].toString().match(/\d+\.\s*(A-Z|Z-A)/i);
+  if (!hasSortInstruction) return;
+
+  // Hide row 2 only if the edit was not in row 2
+  if (editedRow !== instructionRow && !sheet.isRowHiddenByUser(instructionRow)) {
+    sheet.hideRows(instructionRow);
+  }
+
+  // Run sorting if edit not in row 2
+  if (editedRow !== instructionRow) {
+    const moveCell = PropertiesService.getDocumentProperties().getProperty(MOVE_CELL_PROP) === 'true';
+    autoSortColumns(sheet, editedRow, editedCol, idCol, instructionRow, moveCell);
+  }
+}
+
+function autoSortColumns(sheet, activeRow, activeCol, idCol, instructionRow, moveCell) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow <= instructionRow) return;
+
+  // Ensure hidden ID column exists
+  const idRange = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1);
+  const ids = idRange.getValues();
+  let changed = false;
+  for (let i = 0; i < ids.length; i++) {
+    if (!ids[i][0]) {
+      ids[i][0] = Utilities.getUuid();
+      changed = true;
+    }
+  }
+  if (changed) idRange.setValues(ids);
+
+  const activeId = sheet.getRange(activeRow, idCol).getValue();
+
+  // Save original row positions
+  const originalIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues().map(r => r[0]);
+
+  // Build sorting instructions
+  const instructions = sheet.getRange(instructionRow, 1, 1, lastCol).getValues()[0];
+  const sortInstructions = [];
+  instructions.forEach((instr, i) => {
+    if (instr && i + 1 !== idCol) {
+      const match = instr.toString().match(/(\d+)\.\s*(A-Z|Z-A)/i);
+      if (match) {
+        sortInstructions.push({
+          column: i + 1,
+          priority: parseInt(match[1]),
+          ascending: match[2].toUpperCase() === "A-Z"
+        });
+      }
+    }
+  });
+  if (sortInstructions.length === 0) return;
+
+  // Sort by priority ascending
+  sortInstructions.sort((a, b) => a.priority - b.priority);
+
+  const sortSpecs = sortInstructions.map(instr => ({
+    column: instr.column,
+    ascending: instr.ascending
+  }));
+
+  // Sort data (row 3 down, all columns)
+  const range = sheet.getRange(instructionRow + 1, 1, lastRow - instructionRow, lastCol);
+  range.sort(sortSpecs);
+
+  // Move active cell only if toggle is ON and row changed
+  if (moveCell) {
+    const allIds = sheet.getRange(instructionRow + 1, idCol, lastRow - instructionRow, 1).getValues().map(r => r[0]);
+    const oldIndex = originalIds.indexOf(activeId);
+    const newIndex = allIds.indexOf(activeId);
+
+    if (oldIndex !== newIndex && newIndex >= 0) {
+      const newRowIndex = instructionRow + 1 + newIndex;
+      sheet.setActiveSelection(sheet.getRange(newRowIndex, activeCol));
+    }
+  }
+}
